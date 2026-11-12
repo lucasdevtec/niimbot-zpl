@@ -14,7 +14,8 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings
 ```
 
 `cargo run` (debug) mostra no terminal todo o tráfego com a impressora (`->` / `<-`). Use isso ao investigar
-problemas de impressão e anexe o log ao reportar um bug.
+problemas de impressão e anexe o log ao reportar um bug. O mesmo log é gravado em `niimbot-zpl.log` na pasta
+temporária do sistema (`/tmp/niimbot-zpl.log` no Linux; `%TEMP%` no Windows), útil em builds de release sem console.
 
 ## Testes
 

@@ -3,6 +3,28 @@ use crate::{transport::Transport, Error, Result};
 use image::GrayImage;
 use std::time::{Duration, Instant};
 
+/// Logs to stderr and to `<tmp>/niimbot-zpl.log` (truncated on first use), so traffic can be
+/// inspected even from release builds without a console.
+macro_rules! plog {
+    ($($a:tt)*) => { log_line(&format!($($a)*)) };
+}
+
+fn log_line(line: &str) {
+    use std::io::Write;
+    use std::sync::{Mutex, OnceLock};
+    static FILE: OnceLock<Mutex<Option<std::fs::File>>> = OnceLock::new();
+    eprintln!("{line}");
+    let f = FILE.get_or_init(|| Mutex::new(std::fs::File::create(log_path()).ok()));
+    if let Some(f) = f.lock().unwrap().as_mut() {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
+/// Where the protocol log is written.
+pub fn log_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("niimbot-zpl.log")
+}
+
 pub mod cmd {
     pub const SET_LABEL_DENSITY: u8 = 0x21;
     pub const SET_LABEL_TYPE: u8 = 0x23;
@@ -91,7 +113,7 @@ impl<T: Transport> Printer<T> {
     ) -> Result<Vec<u8>> {
         while !self.t.read(Duration::from_millis(1))?.is_empty() {}
         self.send(cmd, data)?;
-        eprintln!("-> {cmd:#04x} {data:02x?}");
+        plog!("-> {cmd:#04x} {data:02x?}");
         let deadline = Instant::now() + wait;
         let (mut acc, mut seen) = (vec![], vec![]);
         while Instant::now() < deadline {
@@ -100,7 +122,7 @@ impl<T: Transport> Printer<T> {
                 if seen.iter().any(|s| *s == (c, d.clone())) {
                     continue;
                 }
-                eprintln!("<- {c:#04x} {d:02x?}");
+                plog!("<- {c:#04x} {d:02x?}");
                 if expect.is_none_or(|e| e == c) {
                     return Ok(d);
                 }
@@ -110,7 +132,7 @@ impl<T: Transport> Printer<T> {
         // Unknown firmware quirk: if something answered but with an unexpected id, use it
         // (the status byte is still validated by the caller) rather than failing outright.
         if let Some((c, d)) = seen.last() {
-            eprintln!("!! no {expect:02x?} reply to {cmd:#04x}; falling back to {c:#04x}");
+            plog!("!! no {expect:02x?} reply to {cmd:#04x}; falling back to {c:#04x}");
             return Ok(d.clone());
         }
         Err(Error::Protocol(format!(
@@ -180,7 +202,7 @@ impl<T: Transport> Printer<T> {
             if attempt >= 20 {
                 return Err(e);
             }
-            eprintln!("!! printer busy ({e}); retry {attempt}/20");
+            plog!("!! printer busy ({e}); retry {attempt}/20");
             std::thread::sleep(Duration::from_millis(500));
         }
         self.request_ok(cmd::SET_LABEL_TYPE, &[1])?; // 1 = gap label
@@ -207,7 +229,10 @@ impl<T: Transport> Printer<T> {
                 self.send(cmd::PRINT_BITMAP_ROW, &d)?;
             }
         }
-        self.request_ok(cmd::PAGE_END, &[1])?;
+        // The reply to page end is not reliable across firmwares (it can be a status
+        // notification), so completion is tracked with the status polling below instead.
+        self.send(cmd::PAGE_END, &[1])?;
+        plog!("-> {:#04x} [01]", cmd::PAGE_END);
         // Wait until the printer reports all pages done.
         let deadline = Instant::now() + Duration::from_secs(30 + 5 * copies as u64);
         while Instant::now() < deadline {
@@ -215,7 +240,7 @@ impl<T: Transport> Printer<T> {
                 cmd::PRINT_STATUS,
                 &[1],
                 Some(reply_id(cmd::PRINT_STATUS)),
-                Duration::from_secs(5),
+                Duration::from_secs(3),
             )?;
             let page = d.get(1).copied().unwrap_or(0) as u16;
             if page >= copies.max(1) {

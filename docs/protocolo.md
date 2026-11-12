@@ -44,7 +44,10 @@ O id da resposta é normalmente `cmd + 1`; as exceções são densidade (`0x21` 
 e status (`0xA3` → `0xB3`). Pacotes com outro id (notificações espontâneas) são ignorados; se só chegarem pacotes
 inesperados até o timeout, o último é usado e o fato é registrado no log (`!!`).
 
-Os comandos de configuração, início e fim de página exigem resposta com primeiro byte `1`; caso contrário o app
+O fim de página (`0xE3`) é enviado sem esperar resposta: a resposta varia entre firmwares e a conclusão é
+acompanhada pelo polling de status.
+
+Os comandos de configuração e início de página exigem resposta com primeiro byte `1`; caso contrário o app
 reporta `printer rejected cmd 0x..`. Antes de cada requisição o buffer de leitura é esvaziado, para que um pacote
 atrasado não seja tomado como resposta. Todo tráfego é registrado em `stderr` (`->` enviado, `<-` recebido).
 
