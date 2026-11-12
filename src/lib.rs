@@ -2,6 +2,7 @@
 pub mod protocol;
 pub mod transport;
 pub mod zpl;
+pub mod data;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
