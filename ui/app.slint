@@ -1,0 +1,269 @@
+import { SpinBox, TextEdit, LineEdit, Palette, ScrollView } from "std-widgets.slint";
+
+export struct El { x: float, y: float, w: float, h: float, selected: bool }
+
+component Chip inherits Rectangle {
+    in property <string> label;
+    in property <color> dot;
+    background: #1d222c; border-radius: 14px; height: 28px;
+    HorizontalLayout {
+        padding-left: 10px; padding-right: 12px; spacing: 7px; alignment: center;
+        Rectangle { width: 9px; height: 9px; border-radius: 5px; background: root.dot; y: (parent.height - self.height) / 2; }
+        Text { text: root.label; color: #e8ebf2; vertical-alignment: center; font-size: 13px; }
+    }
+}
+
+component Btn inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    height: 36px; border-radius: 8px;
+    background: !enabled ? #232834 : primary ? (ta.pressed ? #3b73d9 : ta.has-hover ? #6a9cff : #4f8cff)
+        : danger ? (ta.has-hover ? #5a2a30 : #3d2227) : (ta.has-hover ? #2c3340 : #232834);
+    opacity: enabled ? 1.0 : 0.5;
+    Text { text: root.text; color: white; font-size: 13px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+component Section inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    Text { text: root.title; color: #8b93a1; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+}
+
+component Row inherits HorizontalLayout {
+    in property <string> label;
+    spacing: 8px;
+    Text { text: root.label; color: #aab1be; font-size: 13px; vertical-alignment: center; width: 78px; }
+}
+
+export component App inherits Window {
+    title: "Niimbot ZPL";
+    preferred-width: 1280px;
+    preferred-height: 760px;
+    min-width: 1000px;
+    background: #0f1218;
+
+    in property <image> preview;
+    in property <[El]> els;
+    in property <int> canvas-w: 384;
+    in property <int> canvas-h: 240;
+    in-out property <int> mode: 0; // 0 = components, 1 = ZPL
+    in-out property <string> zpl;
+    in-out property <int> label-w-mm: 48;
+    in-out property <int> label-h-mm: 30;
+    in-out property <int> density: 5;
+    in-out property <int> copies: 1;
+    // selection
+    in-out property <int> sel: -1;
+    in-out property <int> sel-kind: 0; // 0 text, 1 qr, 2 box
+    in-out property <string> sel-text;
+    in-out property <int> sel-size: 40;
+    in-out property <int> sel-w: 100;
+    in-out property <int> sel-h: 60;
+    // data
+    in property <[string]> headers;
+    in property <int> row-count: 0;
+    in-out property <int> preview-row: 1;
+    in property <string> data-info: "Nenhum dado importado";
+    // printer
+    in property <bool> connected;
+    in property <bool> busy;
+    in property <string> conn-text: "Procurando impressora…";
+    in property <string> battery-text;
+    in property <string> message;
+
+    callback render();
+    callback mode-changed();
+    callback add(int);
+    callback select(int);
+    callback remove();
+    callback move-element(int, float, float);
+    callback set-text(string);
+    callback set-prop(int, int);
+    callback insert-var(string);
+    callback import-data();
+    callback clear-data();
+    callback row-changed();
+    callback print();
+    callback calibrate();
+
+    property <float> scale: min(4.0, max(0.2, min((canvas-area.width - 56px) / (root.canvas-w * 1px), (canvas-area.height - 56px) / (root.canvas-h * 1px))));
+
+    init => { Palette.color-scheme = ColorScheme.dark; }
+
+    VerticalLayout {
+        // ---- top bar ----
+        Rectangle {
+            height: 56px; background: #141820;
+            HorizontalLayout {
+                padding-left: 18px; padding-right: 18px; spacing: 12px;
+                Text { text: "Niimbot ZPL"; color: white; font-size: 18px; font-weight: 800; vertical-alignment: center; }
+                Rectangle {
+                    width: 220px; height: 34px; y: 11px; border-radius: 9px; background: #1d222c;
+                    HorizontalLayout {
+                        padding: 3px; spacing: 3px;
+                        Rectangle {
+                            border-radius: 7px; background: root.mode == 0 ? #4f8cff : transparent;
+                            Text { text: "Componentes"; color: white; font-size: 13px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { root.mode = 0; root.mode-changed(); } }
+                        }
+                        Rectangle {
+                            border-radius: 7px; background: root.mode == 1 ? #4f8cff : transparent;
+                            Text { text: "ZPL"; color: white; font-size: 13px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { root.mode = 1; root.mode-changed(); } }
+                        }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Rectangle { width: 1px; }
+                VerticalLayout { alignment: center; Chip { label: root.conn-text; dot: root.connected ? #3ddc84 : #f0a030; } }
+                if root.connected: VerticalLayout { alignment: center; Chip { label: "Bateria " + root.battery-text; dot: #5aa9ff; } }
+            }
+        }
+
+        HorizontalLayout {
+            // ---- left panel ----
+            Rectangle {
+                width: 300px; background: #141820;
+                VerticalLayout {
+                    padding: 16px; spacing: 16px;
+                    if root.mode == 0: VerticalLayout {
+                        spacing: 16px;
+                        Section {
+                            title: "ADICIONAR";
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Btn { text: "Texto"; clicked => { root.add(0); } }
+                                Btn { text: "QR Code"; clicked => { root.add(1); } }
+                                Btn { text: "Caixa"; clicked => { root.add(2); } }
+                            }
+                        }
+                        Section {
+                            title: "ETIQUETA";
+                            Row {
+                                label: "Largura mm";
+                                SpinBox { minimum: 10; maximum: 48; value <=> root.label-w-mm; edited => { root.render(); } }
+                            }
+                            Row {
+                                label: "Altura mm";
+                                SpinBox { minimum: 8; maximum: 200; value <=> root.label-h-mm; edited => { root.render(); } }
+                            }
+                        }
+                        Section {
+                            title: root.sel >= 0 ? "PROPRIEDADES" : "SELECIONE UM ITEM";
+                            if root.sel >= 0 && root.sel-kind != 2: VerticalLayout {
+                                spacing: 8px;
+                                Text { text: root.sel-kind == 0 ? "Texto (use {{variavel}})" : "Conteúdo do QR"; color: #aab1be; font-size: 13px; }
+                                LineEdit { text <=> root.sel-text; edited => { root.set-text(root.sel-text); } }
+                            }
+                            if root.sel >= 0: Row {
+                                label: root.sel-kind == 0 ? "Tamanho" : root.sel-kind == 1 ? "Módulo" : "Borda";
+                                SpinBox { minimum: 1; maximum: 200; value <=> root.sel-size; edited(v) => { root.set-prop(0, v); } }
+                            }
+                            if root.sel >= 0 && root.sel-kind == 2: Row {
+                                label: "Largura";
+                                SpinBox { minimum: 1; maximum: 384; value <=> root.sel-w; edited(v) => { root.set-prop(1, v); } }
+                            }
+                            if root.sel >= 0 && root.sel-kind == 2: Row {
+                                label: "Altura";
+                                SpinBox { minimum: 1; maximum: 2000; value <=> root.sel-h; edited(v) => { root.set-prop(2, v); } }
+                            }
+                            if root.sel >= 0: Btn { text: "Remover item"; danger: true; clicked => { root.remove(); } }
+                        }
+                        Rectangle { vertical-stretch: 1; }
+                    }
+                    if root.mode == 1: VerticalLayout {
+                        spacing: 8px;
+                        Section {
+                            title: "CÓDIGO ZPL";
+                            TextEdit { text <=> root.zpl; font-size: 13px; wrap: no-wrap; min-height: 400px; edited => { root.render(); } }
+                        }
+                    }
+                }
+            }
+
+            // ---- canvas ----
+            canvas-area := Rectangle {
+                horizontal-stretch: 1; background: #0f1218; clip: true;
+                preferred-width: 0px; preferred-height: 0px; min-width: 100px; min-height: 100px;
+                TouchArea { clicked => { root.select(-1); } }
+                Rectangle {
+                    x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                    width: root.canvas-w * root.scale * 1px;
+                    height: root.canvas-h * root.scale * 1px;
+                    background: white; border-radius: 3px; drop-shadow-blur: 24px; drop-shadow-color: #00000099;
+                    Image { source: root.preview; width: 100%; height: 100%; image-rendering: pixelated; image-fit: fill; }
+                    if root.mode == 0: Rectangle {
+                        for e[i] in root.els: Rectangle {
+                            x: e.x * root.scale * 1px; y: e.y * root.scale * 1px;
+                            width: max(e.w * root.scale * 1px, 8px); height: max(e.h * root.scale * 1px, 8px);
+                            border-width: e.selected ? 2px : 0px; border-color: #4f8cff;
+                            background: ta.has-hover && !e.selected ? #4f8cff22 : transparent;
+                            ta := TouchArea {
+                                mouse-cursor: MouseCursor.move;
+                                pointer-event(ev) => {
+                                    if ev.kind == PointerEventKind.down && ev.button == PointerEventButton.left { root.select(i); }
+                                }
+                                moved => {
+                                    root.move-element(i, (self.mouse-x - self.pressed-x) / 1px / root.scale, (self.mouse-y - self.pressed-y) / 1px / root.scale);
+                                }
+                            }
+                        }
+                    }
+                }
+                Text {
+                    x: 14px; y: parent.height - 26px; color: #6b7382; font-size: 12px;
+                    text: root.canvas-w + " × " + root.canvas-h + " pontos  ·  203 dpi";
+                }
+            }
+
+            // ---- right panel ----
+            Rectangle {
+                width: 290px; background: #141820;
+                VerticalLayout {
+                    padding: 16px; spacing: 16px;
+                    Section {
+                        title: "VARIÁVEIS";
+                        Text { text: root.data-info; color: #aab1be; font-size: 13px; wrap: word-wrap; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Btn { text: "Importar CSV…"; clicked => { root.import-data(); } }
+                            if root.row-count > 0: Btn { text: "Limpar"; width: 70px; clicked => { root.clear-data(); } }
+                        }
+                        if root.headers.length > 0: Text { text: "Clique para inserir:"; color: #6b7382; font-size: 12px; }
+                        HorizontalLayout {
+                            spacing: 6px; alignment: start;
+                            for h in root.headers: Rectangle {
+                                height: 26px; border-radius: 13px; background: ch.has-hover ? #34507f : #26344d;
+                                width: lbl.preferred-width + 20px;
+                                lbl := Text { text: "{{" + h + "}}"; color: #bcd3ff; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                                ch := TouchArea { clicked => { root.insert-var(h); } }
+                            }
+                        }
+                        if root.row-count > 0: Row {
+                            label: "Pré-visualizar";
+                            SpinBox { minimum: 1; maximum: root.row-count; value <=> root.preview-row; edited => { root.row-changed(); } }
+                        }
+                    }
+                    Section {
+                        title: "IMPRESSÃO";
+                        Row { label: "Densidade"; SpinBox { minimum: 1; maximum: 5; value <=> root.density; } }
+                        Row { label: "Cópias"; SpinBox { minimum: 1; maximum: 99; value <=> root.copies; } }
+                    }
+                    Rectangle { vertical-stretch: 1; }
+                    Text { text: root.message; color: #aab1be; font-size: 13px; wrap: word-wrap; }
+                    Btn { text: "Calibrar papel"; enabled: root.connected && !root.busy; clicked => { root.calibrate(); } }
+                    Btn {
+                        height: 46px; primary: true;
+                        text: root.busy ? "Imprimindo…" : root.row-count > 0 ? "Imprimir " + root.row-count + " etiquetas" : "Imprimir";
+                        enabled: root.connected && !root.busy;
+                        clicked => { root.print(); }
+                    }
+                }
+            }
+        }
+    }
+}

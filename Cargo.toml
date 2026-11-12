@@ -8,9 +8,18 @@ description = "Open-source Niimbot B1 client: ZPL in, thermal print out (USB/Blu
 name = "niimbot_zpl"
 path = "src/lib.rs"
 
+[[bin]]
+name = "niimbot-zpl"
+path = "src/main.rs"
+
 [dependencies]
+slint = "1"
 serialport = { version = "4", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
-thiserror = "1"
 qrcode = { version = "0.14", default-features = false }
 font8x8 = { version = "0.3", default-features = false, features = ["std", "unicode"] }
+thiserror = "1"
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+
+[build-dependencies]
+slint-build = "1"
