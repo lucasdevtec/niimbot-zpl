@@ -1,3 +1,5 @@
+#![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
+
 use niimbot_zpl::designer::{self, Element, Kind};
 use niimbot_zpl::{data, protocol::Printer, transport, zpl};
 use slint::{
