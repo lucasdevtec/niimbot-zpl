@@ -1,0 +1,15 @@
+[package]
+name = "niimbot-zpl"
+version = "0.1.0"
+edition = "2021"
+description = "Open-source Niimbot B1 client: ZPL in, thermal print out (USB/Bluetooth)"
+
+[lib]
+name = "niimbot_zpl"
+path = "src/lib.rs"
+
+[dependencies]
+serialport = { version = "4", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+thiserror = "1"
+
