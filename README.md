@@ -84,7 +84,7 @@ ui/app.slint    interface
 
 ## Documentação
 
-- [CI e releases](docs/ci-e-release.md)
+- [Índice da documentação](docs/README.md): uso, arquitetura, protocolo, ZPL, desenvolvimento, CI
 
 ## Roadmap
 
