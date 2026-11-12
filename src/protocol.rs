@@ -172,7 +172,17 @@ impl<T: Transport> Printer<T> {
         if w > B1_WIDTH_PX {
             return Err(Error::Protocol(format!("image wider than {B1_WIDTH_PX}px")));
         }
-        self.request_ok(cmd::SET_LABEL_DENSITY, &[density.clamp(1, 5)])?;
+        // Right after a previous job the printer may still be busy and refuse a new one:
+        // retry the first command for a while before giving up.
+        let mut attempt = 0;
+        while let Err(e) = self.request_ok(cmd::SET_LABEL_DENSITY, &[density.clamp(1, 5)]) {
+            attempt += 1;
+            if attempt >= 20 {
+                return Err(e);
+            }
+            eprintln!("!! printer busy ({e}); retry {attempt}/20");
+            std::thread::sleep(Duration::from_millis(500));
+        }
         self.request_ok(cmd::SET_LABEL_TYPE, &[1])?; // 1 = gap label
         self.request_ok(cmd::PRINT_START, &[1])?;
         self.request_ok(cmd::PAGE_START, &[1])?;
@@ -214,6 +224,7 @@ impl<T: Transport> Printer<T> {
             std::thread::sleep(Duration::from_millis(300));
         }
         self.request(cmd::PRINT_END, &[1])?;
+        std::thread::sleep(Duration::from_millis(500)); // let the printer settle before the next job
         Ok(())
     }
 }
