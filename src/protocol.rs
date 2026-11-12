@@ -69,28 +69,59 @@ impl<T: Transport> Printer<T> {
     /// Send and wait for the reply. Stale bytes are dropped first so a leftover packet
     /// is never mistaken for this command's answer. Traffic is logged to stderr.
     fn request(&mut self, cmd: u8, data: &[u8]) -> Result<Vec<u8>> {
+        self.request_with(cmd, data, None, Duration::from_secs(5))
+    }
+
+    /// Like `request`, but when `expect` is set, packets with another command id (e.g.
+    /// unsolicited status notifications sent while printing) are logged and skipped.
+    fn request_with(
+        &mut self,
+        cmd: u8,
+        data: &[u8],
+        expect: Option<u8>,
+        wait: Duration,
+    ) -> Result<Vec<u8>> {
         while !self.t.read(Duration::from_millis(1))?.is_empty() {}
         self.send(cmd, data)?;
         eprintln!("-> {cmd:#04x} {data:02x?}");
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let mut acc = vec![];
+        let deadline = Instant::now() + wait;
+        let (mut acc, mut seen) = (vec![], vec![]);
         while Instant::now() < deadline {
             acc.extend(self.t.read(Duration::from_millis(200))?);
-            if let Some((c, d)) = decode(&acc).into_iter().next() {
+            for (c, d) in decode(&acc) {
+                if seen.iter().any(|s| *s == (c, d.clone())) {
+                    continue;
+                }
                 eprintln!("<- {c:#04x} {d:02x?}");
-                return Ok(d);
+                if expect.is_none_or(|e| e == c) {
+                    return Ok(d);
+                }
+                seen.push((c, d));
             }
         }
-        Err(Error::Protocol(format!("no response to cmd {cmd:#x}")))
+        Err(Error::Protocol(format!(
+            "no response to cmd {cmd:#x}{}",
+            if seen.is_empty() {
+                String::new()
+            } else {
+                format!(" (only got {seen:02x?})")
+            }
+        )))
     }
 
-    /// Like `request`, but fails if the printer answers with a non-1 status byte.
+    /// Like `request`, but expects the usual reply id (`cmd + 1`) and fails if the
+    /// printer answers with a non-1 status byte. `wait` covers slow steps like page end.
     fn request_ok(&mut self, cmd: u8, data: &[u8]) -> Result<()> {
-        let d = self.request(cmd, data)?;
+        let wait = if cmd == cmd::PAGE_END {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(5)
+        };
+        let d = self.request_with(cmd, data, Some(cmd + 1), wait)?;
         match d.first() {
             Some(1) => Ok(()),
-            other => Err(Error::Protocol(format!(
-                "printer rejected cmd {cmd:#x} (reply {other:?})"
+            _ => Err(Error::Protocol(format!(
+                "printer rejected cmd {cmd:#x} (reply {d:02x?})"
             ))),
         }
     }
@@ -156,7 +187,12 @@ impl<T: Transport> Printer<T> {
         // Wait until the printer reports all pages done.
         let deadline = Instant::now() + Duration::from_secs(30 + 5 * copies as u64);
         while Instant::now() < deadline {
-            let d = self.request(cmd::PRINT_STATUS, &[1])?;
+            let d = self.request_with(
+                cmd::PRINT_STATUS,
+                &[1],
+                Some(cmd::PRINT_STATUS + 0x10),
+                Duration::from_secs(5),
+            )?;
             let page = d.get(1).copied().unwrap_or(0) as u16;
             if page >= copies.max(1) {
                 break;
