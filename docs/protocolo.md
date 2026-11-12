@@ -40,6 +40,10 @@ ressincroniza procurando `55 55`.
 4. Consulta `0xA3` a cada 300 ms até a página impressa ≥ cópias (timeout `30 s + 5 s × cópias`).
 5. Fim do job.
 
+O id da resposta é normalmente `cmd + 1`; as exceções são densidade (`0x21` → `0x31`), tipo de etiqueta (`0x23` → `0x33`)
+e status (`0xA3` → `0xB3`). Pacotes com outro id (notificações espontâneas) são ignorados; se só chegarem pacotes
+inesperados até o timeout, o último é usado e o fato é registrado no log (`!!`).
+
 Os comandos de configuração, início e fim de página exigem resposta com primeiro byte `1`; caso contrário o app
 reporta `printer rejected cmd 0x..`. Antes de cada requisição o buffer de leitura é esvaziado, para que um pacote
 atrasado não seja tomado como resposta. Todo tráfego é registrado em `stderr` (`->` enviado, `<-` recebido).

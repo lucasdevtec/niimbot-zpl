@@ -23,6 +23,14 @@ pub mod cmd {
 /// B1 printhead: 384 dots (48 bytes) at 203 dpi.
 pub const B1_WIDTH_PX: u32 = 384;
 
+/// Reply id for a request: usually `cmd + 1`; density/type answer with `+ 0x10`, status with `0xB3`.
+fn reply_id(cmd: u8) -> u8 {
+    match cmd {
+        cmd::SET_LABEL_DENSITY | cmd::SET_LABEL_TYPE | cmd::PRINT_STATUS => cmd + 0x10,
+        c => c + 1,
+    }
+}
+
 pub fn encode(cmd: u8, data: &[u8]) -> Vec<u8> {
     let mut p = vec![0x55, 0x55, cmd, data.len() as u8];
     p.extend_from_slice(data);
@@ -99,6 +107,12 @@ impl<T: Transport> Printer<T> {
                 seen.push((c, d));
             }
         }
+        // Unknown firmware quirk: if something answered but with an unexpected id, use it
+        // (the status byte is still validated by the caller) rather than failing outright.
+        if let Some((c, d)) = seen.last() {
+            eprintln!("!! no {expect:02x?} reply to {cmd:#04x}; falling back to {c:#04x}");
+            return Ok(d.clone());
+        }
         Err(Error::Protocol(format!(
             "no response to cmd {cmd:#x}{}",
             if seen.is_empty() {
@@ -117,7 +131,7 @@ impl<T: Transport> Printer<T> {
         } else {
             Duration::from_secs(5)
         };
-        let d = self.request_with(cmd, data, Some(cmd + 1), wait)?;
+        let d = self.request_with(cmd, data, Some(reply_id(cmd)), wait)?;
         match d.first() {
             Some(1) => Ok(()),
             _ => Err(Error::Protocol(format!(
@@ -190,7 +204,7 @@ impl<T: Transport> Printer<T> {
             let d = self.request_with(
                 cmd::PRINT_STATUS,
                 &[1],
-                Some(cmd::PRINT_STATUS + 0x10),
+                Some(reply_id(cmd::PRINT_STATUS)),
                 Duration::from_secs(5),
             )?;
             let page = d.get(1).copied().unwrap_or(0) as u16;
