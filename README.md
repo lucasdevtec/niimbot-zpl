@@ -82,6 +82,10 @@ src/
 ui/app.slint    interface
 ```
 
+## Documentação
+
+- [CI e releases](docs/ci-e-release.md)
+
 ## Roadmap
 
 - [ ] Bluetooth (BLE) como segundo `Transport`
