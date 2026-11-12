@@ -1,6 +1,7 @@
 //! Niimbot B1 driver: ZPL -> bitmap -> printer protocol over a pluggable transport.
 pub mod protocol;
 pub mod transport;
+pub mod zpl;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

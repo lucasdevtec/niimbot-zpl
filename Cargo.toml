@@ -12,4 +12,5 @@ path = "src/lib.rs"
 serialport = { version = "4", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 thiserror = "1"
-
+qrcode = { version = "0.14", default-features = false }
+font8x8 = { version = "0.3", default-features = false, features = ["std", "unicode"] }
