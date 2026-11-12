@@ -39,7 +39,7 @@ em [zpl.md](zpl.md).
    vírgula (detectado pela primeira linha); campos entre aspas são aceitos.
 3. Cada coluna vira um botão: clique para inserir `{{coluna}}` no item selecionado (ou ao final do ZPL).
 4. **Pré-visualizar** escolhe qual linha aparece no canvas.
-5. O botão de imprimir passa a ser **Imprimir N etiquetas**: uma etiqueta por linha. O campo **Cópias** vale
+5. O botão passa a ser **Revisar e imprimir N etiquetas**: uma etiqueta por linha. O campo **Cópias** vale
    para cada etiqueta.
 
 ```csv
@@ -53,6 +53,13 @@ Detalhes:
 - `^` e `~` são removidos dos valores importados, para não quebrar o ZPL.
 - Linhas em branco são ignoradas. **Limpar** descarta os dados importados.
 - Cada etiqueta do lote é um job de impressão separado. Se uma falhar, o lote para e a mensagem indica qual.
+
+## Revisar antes de imprimir
+
+O botão **Revisar e imprimir** abre uma janela com a etiqueta final (o mesmo bitmap que vai para a impressora),
+o tamanho em mm, a densidade e as cópias. Em lote, **◀ ▶** navegam entre as etiquetas e o botão confirma com
+**Imprimir N**. **Cancelar** (ou clicar fora) fecha sem imprimir. Se a impressora estiver desconectada a prévia
+abre, mas a impressão fica desabilitada.
 
 ## Impressão
 

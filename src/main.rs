@@ -234,6 +234,13 @@ fn main() -> Result<(), slint::PlatformError> {
     let c = ctx.clone();
     app.on_render(move || c.refresh());
     let c = ctx.clone();
+    app.on_modal_nav(move |d| {
+        let a = c.app.upgrade().unwrap();
+        let n = c.st.borrow().rows.len() as i32;
+        a.set_preview_row((a.get_preview_row() + d).clamp(1, n.max(1)));
+        c.refresh();
+    });
+    let c = ctx.clone();
     app.on_row_changed(move || c.refresh());
 
     let c = ctx.clone();

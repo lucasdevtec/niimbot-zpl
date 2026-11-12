@@ -74,6 +74,7 @@ export component App inherits Window {
     in property <string> conn-text: "Procurando impressora…";
     in property <string> battery-text;
     in property <string> message;
+    in-out property <bool> show-modal: false;
 
     callback render();
     callback mode-changed();
@@ -88,6 +89,7 @@ export component App inherits Window {
     callback clear-data();
     callback row-changed();
     callback print();
+    callback modal-nav(int);
     callback calibrate();
 
     property <float> scale: min(4.0, max(0.2, min((canvas-area.width - 56px) / (root.canvas-w * 1px), (canvas-area.height - 56px) / (root.canvas-h * 1px))));
@@ -258,9 +260,52 @@ export component App inherits Window {
                     Btn { text: "Calibrar papel"; enabled: root.connected && !root.busy; clicked => { root.calibrate(); } }
                     Btn {
                         height: 46px; primary: true;
-                        text: root.busy ? "Imprimindo…" : root.row-count > 0 ? "Imprimir " + root.row-count + " etiquetas" : "Imprimir";
+                        text: root.busy ? "Imprimindo…" : root.row-count > 0 ? "Revisar e imprimir " + root.row-count + " etiquetas" : "Revisar e imprimir";
                         enabled: root.connected && !root.busy;
-                        clicked => { root.print(); }
+                        clicked => { root.show-modal = true; }
+                    }
+                }
+            }
+        }
+    }
+    if root.show-modal: Rectangle {
+        width: 100%; height: 100%; background: #000000b8;
+        TouchArea { clicked => { root.show-modal = false; } }
+        Rectangle {
+            width: 560px; height: 520px; background: #1b2029; border-radius: 14px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            drop-shadow-blur: 32px; drop-shadow-color: #000000cc;
+            TouchArea { } // swallow clicks so the card does not close the dialog
+            VerticalLayout {
+                padding: 22px; spacing: 14px;
+                Text { text: "Pré-visualização da impressão"; color: white; font-size: 18px; font-weight: 700; }
+                Rectangle {
+                    background: #2a2f38; border-radius: 8px; vertical-stretch: 1;
+                    Rectangle {
+                        background: white;
+                        width: min(parent.width - 32px, (parent.height - 32px) * root.canvas-w / root.canvas-h);
+                        height: self.width * root.canvas-h / root.canvas-w;
+                        x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                        Image { source: root.preview; width: 100%; height: 100%; image-rendering: pixelated; image-fit: fill; }
+                    }
+                }
+                Text {
+                    horizontal-alignment: center; color: #aab1be; font-size: 13px;
+                    text: (root.row-count > 0 ? "Etiqueta " + root.preview-row + " de " + root.row-count + "  ·  " : "")
+                        + root.canvas-w / 8 + " × " + root.canvas-h / 8 + " mm  ·  densidade " + root.density
+                        + "  ·  " + root.copies + (root.copies == 1 ? " cópia" : " cópias") + (root.row-count > 0 ? " por etiqueta" : "");
+                }
+                if !root.connected: Text { horizontal-alignment: center; color: #f0a030; font-size: 13px; text: "Impressora desconectada"; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    if root.row-count > 1: Btn { text: "◀"; width: 52px; enabled: root.preview-row > 1; clicked => { root.modal-nav(-1); } }
+                    if root.row-count > 1: Btn { text: "▶"; width: 52px; enabled: root.preview-row < root.row-count; clicked => { root.modal-nav(1); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn { text: "Cancelar"; width: 110px; clicked => { root.show-modal = false; } }
+                    Btn {
+                        text: root.row-count > 0 ? "Imprimir " + root.row-count : "Imprimir";
+                        width: 130px; primary: true; enabled: root.connected && !root.busy;
+                        clicked => { root.show-modal = false; root.print(); }
                     }
                 }
             }
